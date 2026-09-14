@@ -156,27 +156,37 @@ The LSTM retained a slight advantage in RMSE for grid import. Overall, the resul
 
 ## Transfer Learning
 
-A transfer-learning experiment was performed by pretraining a Transformer on PV forecasting and transferring the learned encoder and input-projection layers to the grid-import forecasting task.
+A transfer-learning experiment was performed to investigate whether knowledge learned from PV forecasting could be transferred to the related grid-import forecasting task.
 
-A fresh forecasting head was used for the target task.
+A Transformer was first pretrained on the PV forecasting task. The learned input projection and Transformer encoder were then transferred to the grid-import task, while a new forecasting head was trained for the target task.
 
-The experiment compared:
-1. Transformer trained from scratch on the target task
-2. Transformer initialised using knowledge transferred from the PV task
+Two approaches were compared:
 
-Target-domain training data were varied across:
+1. Transformer trained from scratch on grid-import data
+2. Transformer initialised using knowledge transferred from the PV forecasting task
+
+The experiment was repeated using different amounts of available grid-import training data:
+
 - 10%
 - 25%
 - 50%
 - 100%
 
-The target scaler was fitted only using the corresponding available target training subset.
+This was designed to test whether transfer learning becomes more useful when the target task has limited training data.
 
-At approximately 10% of target training data, transfer learning produced approximately:
-- **2.9% improvement in MAE**
-- **8.65% improvement in RMSE**
+### Transfer-learning benefit
 
-The improvement was not consistent across all data fractions, indicating that transfer learning may be useful under data scarcity but is task- and data-dependent.
+![Transfer-learning benefit from PV to grid forecasting](transfer_learning_benefit.png)
+
+The figure shows the percentage change in MAE obtained through transfer learning relative to training the target model from scratch.
+
+Positive values indicate an improvement from transfer learning, while negative values indicate that the transferred model performed worse than the model trained from scratch.
+
+The largest positive effect occurs when only **10% of the grid-import training data** are available, with approximately **2.9% MAE improvement**.
+
+At 25% of the available target data, transfer learning instead results in approximately a **3.2% decrease in MAE performance**. At 50% the difference is close to zero, while at 100% transfer learning results in approximately a **0.9% decrease in MAE performance**.
+
+These results suggest that transferring knowledge from PV forecasting can provide a small benefit under severe target-data scarcity, but the benefit is not consistent as more target-domain data become available.
 
 ## Figures
 
@@ -210,9 +220,13 @@ The LSTM substantially outperformed persistence for both PV and grid-import fore
 
 The Transformer produced competitive results but did not consistently outperform the LSTM. This demonstrates that model performance depends on the characteristics of the forecasting task.
 
-### Transfer learning
+### Transfer Learning
 
-Transfer learning provided a modest benefit when target-domain data were scarce, but the benefit was not uniform across all data availability levels.
+The largest positive effect occurs when only **10% of the grid-import training data** are available, with approximately **2.9% MAE improvement**.
+
+At 25% of the available target data, transfer learning instead results in approximately a **3.2% decrease in MAE performance**. At 50% the difference is close to zero, while at 100% transfer learning results in approximately a **0.9% decrease in MAE performance**.
+
+These results suggest that transferring knowledge from PV forecasting can provide a small benefit under severe target-data scarcity, but the benefit is not consistent as more target-domain data become available.
 
 ## Limitations
 
