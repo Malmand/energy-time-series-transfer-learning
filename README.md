@@ -1,311 +1,90 @@
-# Energy Time-Series Forecasting and Transfer Learning
+# Household Energy Forecasting with LSTM, Transformer and Transfer Learning
 
-## Overview
+Next-hour forecasting of rooftop PV generation and grid import for a single German household, comparing a persistence baseline, an LSTM and a Transformer encoder. A transfer-learning experiment then tests whether a model pretrained on PV can help forecast grid import when little grid data is available.
 
-This project explores machine learning methods for short-term household energy forecasting using Python.
+| | |
+|---|---|
+| **Data** | Open Power System Data household dataset, Residential 4 (southern Germany), hourly, Oct 2015 to Feb 2018 |
+| **Task** | Univariate next-hour forecast from a 24-hour lookback window |
+| **Models** | Persistence, LSTM (TensorFlow/Keras), Transformer encoder (PyTorch) |
+| **Evaluation** | MAE and RMSE on a chronological 70/15/15 train/validation/test split |
 
-The project compares:
-- Persistence forecasting
-- LSTM-based forecasting
-- Transformer-based forecasting
-- Transfer learning between related energy forecasting tasks
+## Key results
 
-The analysis focuses on photovoltaic (PV) generation and grid electricity import, with the objective of evaluating next-hour forecasting performance and whether transfer learning can help when target-domain data are limited.
+| Target | Model | MAE (kWh) | RMSE (kWh) | MAE vs persistence |
+|---|---|---:|---:|---:|
+| PV | Persistence | 0.371 | 0.722 | |
+| PV | **LSTM** | **0.257** | **0.501** | **−31%** |
+| PV | Transformer | 0.282 | | −24% |
+| Grid import | Persistence | 0.330 | 0.485 | |
+| Grid import | LSTM | 0.281 | **0.398** | −15% |
+| Grid import | **Transformer** | **0.269** | | **−18%** |
 
-## Objectives
+- The LSTM is the best PV model. For grid import the Transformer has the lowest MAE, while the LSTM keeps a slightly lower RMSE, so neither architecture wins everywhere.
+- Transfer learning from PV to grid import gives a small gain only when target data are scarce: about **2.9% lower MAE with 10%** of the grid training data. With 25%, 50% and 100% of the data the effect is −3.2%, about 0% and −0.9%, so the benefit is not consistent.
 
-1. Explore and preprocess household energy time-series data.
-2. Establish a persistence forecasting baseline.
-3. Develop an LSTM model for next-hour forecasting.
-4. Develop a Transformer model for the same task.
-5. Compare models using MAE and RMSE.
-6. Investigate transfer learning between related energy forecasting tasks.
-7. Evaluate transfer learning under target-domain data scarcity.
+![Transfer-learning benefit](figures/transfer_learning_benefit.png)
 
-## Dataset
+*Change in grid-import MAE when the Transformer is initialised from the PV model instead of trained from scratch (positive = transfer helps).*
 
-The project uses the **Open Power System Data (OPSD) Household Data**, focusing on Residential 4 in southern Germany.
+## Method
 
-The original data contain cumulative energy readings. These were converted to hourly energy values by differencing consecutive readings where timestamps were exactly one hour apart.
+**Preprocessing** (`01_data_exploration.ipynb`)
+- The raw data are cumulative meter readings. Hourly energy is obtained by differencing consecutive readings that are exactly one hour apart.
+- The longest continuous valid block is kept: 2015-10-10 16:00 to 2018-02-04 23:00 UTC, giving 20,359 hourly values. No negative increments occur in the PV or grid-import series.
+- Chronological 70/15/15 split; scalers are fitted on the training set only, so no information leaks from validation or test data.
 
-The largest continuous raw-valid block used was:
+**LSTM** (`02_lstm_forecasting.ipynb`): LSTM(64) → Dropout(0.2) → Dense(32, ReLU) → Dense(1); Adam, MSE loss, batch 64, up to 30 epochs with early stopping (patience 5, best weights restored).
 
-**2015-10-10 16:00 UTC to 2018-02-04 23:00 UTC**
+**Transformer** (`03_transformer_forecasting.ipynb`): linear projection to d_model = 64, sinusoidal positional encoding, 2 encoder layers with 4 heads, feed-forward size 128, dropout 0.1, GELU, then Dense(32) and a linear output.
 
-This contains:
-- 20,360 raw observations
-- 20,359 usable hourly increments
-
-No negative differences were observed for the PV or grid-import series used.
-
-## Methodology
-
-### Data preprocessing
-
-The workflow includes:
-- Loading the household energy dataset
-- Selecting PV generation and grid-import variables
-- Converting cumulative readings into hourly energy
-- Identifying the largest continuous valid time block
-- Chronological 70/15/15 train/validation/test splitting
-- Fitting scalers using training data only
-- Creating sliding windows
-
-A **24-hour lookback window** is used to predict the next hourly value.
-
-### Persistence baseline
-
-The previous observed value is used as the next-hour forecast. This provides a simple benchmark against which the neural-network models are evaluated.
-
-### LSTM forecasting
-
-The LSTM uses the previous 24 hours to predict the next hour.
-
-```text
-Input: 24 hourly observations
-        |
-LSTM (64 units)
-        |
-Dropout (0.2)
-        |
-Dense (32, ReLU)
-        |
-Dense (1)
-        |
-Next-hour forecast
-```
-
-Configuration:
-- Optimizer: Adam
-- Loss: Mean Squared Error
-- Batch size: 64
-- Maximum epochs: 30
-- Early stopping patience: 5
-- Best weights restored
-
-Implementation: TensorFlow/Keras.
-
-### Transformer forecasting
-
-A Transformer encoder is evaluated using the same forecasting setup.
-
-```text
-Input: 24 hourly observations
-        |
-Linear projection
-        |
-Sinusoidal positional encoding
-        |
-Transformer Encoder
-        |
-Dense (32)
-        |
-Output layer
-        |
-Next-hour forecast
-```
-
-Configuration:
-- Input size: 1
-- Model dimension: 64
-- Attention heads: 4
-- Transformer layers: 2
-- Feed-forward dimension: 128
-- Dropout: 0.1
-- Activation: GELU
-
-Implementation: PyTorch.
-
-## Results
-
-### LSTM vs Persistence
-
-| Target | Model | MAE | RMSE |
-|---|---|---:|---:|
-| PV | Persistence | 0.3710 | 0.7224 |
-| PV | LSTM | **0.2567** | **0.5005** |
-| Grid import | Persistence | 0.3300 | 0.4846 |
-| Grid import | LSTM | **0.2814** | **0.3978** |
-
-### Improvement over persistence
-
-| Target | MAE improvement | RMSE improvement |
-|---|---:|---:|
-| PV | 30.8% | 30.7% |
-| Grid import | 14.8% | 17.9% |
-
-The LSTM substantially improves on the persistence baseline, particularly for PV forecasting.
-
-### LSTM vs Transformer
-
-For PV forecasting:
-
-| Model | PV MAE |
-|---|---:|
-| LSTM | **0.2567** |
-| Transformer | 0.2817 |
-
-For grid-import forecasting, the Transformer achieved a lower MAE than the LSTM:
-
-| Model | Grid MAE |
-|---|---:|
-| LSTM | 0.2814 |
-| Transformer | **0.2694** |
-
-The LSTM retained a slight advantage in RMSE for grid import. Overall, the results do not indicate that the Transformer is universally superior; performance depends on the forecasting task.
-
-## Transfer Learning
-
-A transfer-learning experiment was performed to investigate whether knowledge learned from PV forecasting could be transferred to the related grid-import forecasting task.
-
-A Transformer was first pretrained on the PV forecasting task. The learned input projection and Transformer encoder were then transferred to the grid-import task, while a new forecasting head was trained for the target task.
-
-Two approaches were compared:
-
-1. Transformer trained from scratch on grid-import data
-2. Transformer initialised using knowledge transferred from the PV forecasting task
-
-The experiment was repeated using different amounts of available grid-import training data:
-
-- 10%
-- 25%
-- 50%
-- 100%
-
-This was designed to test whether transfer learning becomes more useful when the target task has limited training data.
-
-### Transfer-learning benefit
-
-![Transfer-learning benefit from PV to grid forecasting](transfer_learning_benefit.png)
-
-The figure shows the percentage change in MAE obtained through transfer learning relative to training the target model from scratch.
-
-Positive values indicate an improvement from transfer learning, while negative values indicate that the transferred model performed worse than the model trained from scratch.
-
-The largest positive effect occurs when only **10% of the grid-import training data** are available, with approximately **2.9% MAE improvement**.
-
-At 25% of the available target data, transfer learning instead results in approximately a **3.2% decrease in MAE performance**. At 50% the difference is close to zero, while at 100% transfer learning results in approximately a **0.9% decrease in MAE performance**.
-
-These results suggest that transferring knowledge from PV forecasting can provide a small benefit under severe target-data scarcity, but the benefit is not consistent as more target-domain data become available.
+**Transfer learning** (`04_transfer_learning.ipynb`): the input projection and encoder of a Transformer trained on PV are reused for grid import, with a new forecasting head. This is compared with a Transformer trained from scratch, using 10%, 25%, 50% and 100% of the grid-import training data.
 
 ## Figures
 
-The main figures are embedded directly in this README.
+| PV, one test week | Grid import, one test week |
+|---|---|
+| ![PV forecast](figures/pv_forecasting.png) | ![Grid forecast](figures/grid_forecasting.png) |
 
-### PV forecasting
+Training and validation loss curves: [PV](figures/pv_training_loss.png), [grid import](figures/grid_training_loss.png).
 
-![PV actual vs LSTM vs persistence](pv_forecasting.png)
+## How to run
 
-### Grid-import forecasting
+```bash
+pip install -r requirements.txt
+jupyter lab            # then run the notebooks in order, from the notebooks/ folder
+```
 
-![Grid actual vs LSTM vs persistence](grid_forecasting.png)
+Notebook 01 creates `data/residential4_model_data.csv`, which notebooks 02 to 04 read. The notebooks also run in Google Colab: upload the `data/` folder next to them.
 
-### PV training and validation loss
+## Repository structure
 
-![PV training and validation loss](pv_training_loss.png)
-
-### Grid training and validation loss
-
-![Grid training and validation loss](grid_training_loss.png)
-
-The figure files should be placed in the **same flat repository location as `README.md`**. No `figures/` folder is required.
-
-## Key Findings
-
-### LSTM
-
-The LSTM substantially outperformed persistence for both PV and grid-import forecasting, with the largest relative improvement observed for PV.
-
-### Transformer
-
-The Transformer produced competitive results but did not consistently outperform the LSTM. This demonstrates that model performance depends on the characteristics of the forecasting task.
-
-### Transfer Learning
-
-The largest positive effect occurs when only **10% of the grid-import training data** are available, with approximately **2.9% MAE improvement**.
-
-At 25% of the available target data, transfer learning instead results in approximately a **3.2% decrease in MAE performance**. At 50% the difference is close to zero, while at 100% transfer learning results in approximately a **0.9% decrease in MAE performance**.
-
-These results suggest that transferring knowledge from PV forecasting can provide a small benefit under severe target-data scarcity, but the benefit is not consistent as more target-domain data become available.
+```
+energy-time-series-transfer-learning/
+├── notebooks/
+│   ├── 01_data_exploration.ipynb       data cleaning and hourly energy series
+│   ├── 02_lstm_forecasting.ipynb       persistence and LSTM
+│   ├── 03_transformer_forecasting.ipynb
+│   └── 04_transfer_learning.ipynb      PV → grid import under data scarcity
+├── data/
+│   └── household_data_60min_singleindex_filtered.csv
+├── figures/
+├── requirements.txt
+└── README.md
+```
 
 ## Limitations
 
-- Only one household dataset is considered.
-- The forecasting models are univariate.
-- A 24-hour historical window is used.
-- The transfer-learning experiment uses a single experimental setup and seed.
-- Transfer-learning improvements are modest and inconsistent across all data fractions.
-- Weather, calendar, electricity-price and other exogenous variables are not included.
-- Generalisation across multiple households and locations is not evaluated.
+- One household; generalisation across homes and locations is not tested.
+- Univariate models with no weather, calendar or price inputs.
+- Results come from a single random seed, so the small transfer-learning differences (a few percent) may not be robust.
 
-## Future Work
+Natural extensions are weather-driven PV forecasts, cross-household transfer, several seeds with confidence intervals, probabilistic forecasts and using the forecasts in a battery energy-management model (see [residential-microgrid-ems](https://github.com/Malmand/residential-microgrid-ems)).
 
-Potential extensions include:
-- Multivariate forecasting using weather and calendar variables
-- PV forecasting using irradiance and weather data
-- Cross-household transfer learning
-- Cross-location transfer learning
-- Hyperparameter optimisation
-- Multiple random seeds and statistical evaluation
-- Probabilistic forecasting
-- Longer forecasting horizons
-- Additional forecasting architectures
-- Integration with battery energy-storage optimisation
-- Forecast-informed energy management and smart-grid applications
+## Data source
 
-## Repository Structure
-
-The repository intentionally uses a **flat structure**:
-
-```text
-energy-time-series-transfer-learning/
-├── README.md
-├── 01_data_exploration.ipynb
-├── 02_lstm_forecasting.ipynb
-├── 03_transformer_forecasting.ipynb
-├── 04_transfer_learning.ipynb
-├── household_data_60min_singleindex_filtered.csv
-├── pv_forecasting.png
-├── grid_forecasting.png
-├── pv_training_loss.png
-└── grid_training_loss.png
-```
-
-The notebooks follow the workflow:
-1. `01_data_exploration.ipynb` — dataset exploration and preprocessing
-2. `02_lstm_forecasting.ipynb` — LSTM forecasting and persistence comparison
-3. `03_transformer_forecasting.ipynb` — Transformer forecasting
-4. `04_transfer_learning.ipynb` — transfer learning under target-data scarcity
-
-## Technologies
-
-- Python
-- Pandas
-- NumPy
-- Matplotlib
-- Scikit-learn
-- TensorFlow / Keras
-- PyTorch
-- Jupyter Notebook
-
-## Skills Demonstrated
-
-- Time-series preprocessing
-- Chronological train/validation/test splitting
-- Data leakage prevention
-- Feature scaling
-- Sliding-window sequence generation
-- LSTM neural networks
-- Transformer architectures
-- PyTorch
-- TensorFlow/Keras
-- Model evaluation
-- Baseline comparison
-- Transfer learning
-- Forecasting under data-scarcity conditions
+Open Power System Data. 2020. Data Package Household Data. Version 2020-04-15. https://data.open-power-system-data.org/household_data/2020-04-15/ (licensed under Creative Commons Attribution International). The file in `data/` is the filtered 60-minute single-index version.
 
 ## Author
 
-**Mohamed Al-Mandhari**
-
-Energy engineering / renewable energy / smart energy systems
+Mohamed Al-Mandhari · [github.com/Malmand](https://github.com/Malmand)
